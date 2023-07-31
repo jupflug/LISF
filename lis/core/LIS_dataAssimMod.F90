@@ -52,6 +52,7 @@ module LIS_dataAssimMod
 !   7 Sep 2017    Mahdi Navari; set a condition to deal the skewness of the both model and obs CDF 
 !   1 Apr 2019    Yonghwan Kwon; include an option to read soil moisture CDF information for each month separately
 !   5 Mar 2021    Eric Kemp; reduced memory usage in read_CDFdata_month
+!   1 Oct 2022    Yeosang Yoon; excluded RAPID from 'Routing_DAinst'
 ! 
 ! !USES: 
   use ESMF
@@ -450,7 +451,7 @@ contains
              endif
           enddo
           do i=1,LIS_rc%ndas
-             if(LIS_rc%routingmodel.ne."none") then
+             if(LIS_rc%routingmodel.ne."none" .and. LIS_rc%routingmodel.ne."RAPID router") then
                 if(LIS_rc%Routing_DAinst_valid(i)) then
                    call routingdainit(trim(LIS_rc%routingmodel)//"+"//&
                         trim(LIS_rc%daset(i))//char(0),i)
@@ -1014,34 +1015,25 @@ contains
 !EOP
 
      integer                  :: nid, gid
-     character*50             :: cdf_wstyle
-     
+
      TRACE_ENTER("DA_getCDFatt")
 #if(defined USE_NETCDF3 || defined USE_NETCDF4)
      call LIS_verify(nf90_open(path=trim(filename),mode=NF90_NOWRITE,&
           ncid=nid),'failed to open file '//trim(filename))
 
-     call LIS_verify(nf90_get_att(nid, NF90_GLOBAL, &
-          'style', &
-          cdf_wstyle),&
-          'Error in nf90_get_att: style')
-     if(cdf_wstyle.eq."1d") then 
-        call LIS_verify(nf90_inq_dimid(nid, 'ngrid',gId), &
-             'Error nf90_inq_dimid: ngrid')
+     call LIS_verify(nf90_inq_dimid(nid, 'ngrid',gId), &
+          'Error nf90_inq_dimid: ngrid')
      
-        call LIS_verify(nf90_inquire_dimension(nid, gId, len=ngrid), &
-             'Error nf90_inquire_dimension:ngrid')
-        
+     call LIS_verify(nf90_inquire_dimension(nid, gId, len=ngrid), &
+          'Error nf90_inquire_dimension:ngrid')
+
 !     if(ngrid.ne.LIS_rc%obs_glbngrid_red(k)) then 
 !        write(LIS_logunit,*) '[ERR] The observation grid in the CDF file '
 !        write(LIS_logunit,*) '[ERR] does not match the LIS observation grid'
 !        call LIS_endrun()
 !     else
 !        ngrid = LIS_rc%obs_ngrid(k)
-        !     endif
-     else
-        ngrid = LIS_rc%obs_ngrid(k)
-     endif
+!     endif
 
      call LIS_verify(nf90_get_att(nid, NF90_GLOBAL, &
           'temporal_resolution_CDF', &
@@ -1091,145 +1083,77 @@ contains
 !  \item[cdf]           y-axis (CDF) values corresponding to the CDF
 ! \end{description}
 !EOP
-     integer                  :: j,kk,c,r,gid
-     integer                  :: ngridId, nbinsId, nlevsId,ncId,nrId
+     integer                  :: j,kk
+     integer                  :: ngridId, nbinsId, nlevsId
      integer                  :: ngrid_file, nbins_file, nlevs_file
-     integer                  :: nc_file,nr_file
      integer                  :: xid, cdfid
      real, allocatable        :: xrange_file(:,:,:)
      real, allocatable        :: cdf_file(:,:,:)
-     character*50             :: cdf_wstyle
      integer                  :: nid
       
      TRACE_ENTER("DA_readCDF")
 #if(defined USE_NETCDF3 || defined USE_NETCDF4)
      write(LIS_logunit,*) '[INFO] Reading CDF file ',trim(filename)
-     if(ngrid.gt.0) then        
+     if(ngrid.gt.0) then 
         call LIS_verify(nf90_open(path=trim(filename),mode=NF90_NOWRITE,&
              ncid=nid),'failed to open file '//trim(filename))
-
-        call LIS_verify(nf90_get_att(nid, NF90_GLOBAL, &
-             'style', &
-             cdf_wstyle),&
-             'Error in nf90_get_att: style')
-        if(cdf_wstyle.eq."1d") then         
         
-           call LIS_verify(nf90_inq_dimid(nid,"ngrid",ngridId), &
-                'nf90_inq_dimid failed for ngrid')
-           call LIS_verify(nf90_inq_dimid(nid,"nbins",nbinsId), &
-                'nf90_inq_dimid failed for nbins')
-           call LIS_verify(nf90_inq_dimid(nid,trim(varname)//"_levels",nlevsId), &
-                'nf90_inq_dimid failed for '//trim(varname)//"_levels")
+        call LIS_verify(nf90_inq_dimid(nid,"ngrid",ngridId), &
+             'nf90_inq_dimid failed for ngrid')
+        call LIS_verify(nf90_inq_dimid(nid,"nbins",nbinsId), &
+             'nf90_inq_dimid failed for nbins')
+        call LIS_verify(nf90_inq_dimid(nid,trim(varname)//"_levels",nlevsId), &
+             'nf90_inq_dimid failed for '//trim(varname)//"_levels")
         
-           call LIS_verify(nf90_inquire_dimension(nid,ngridId, len=ngrid_file),&
-                'nf90_inquire_dimension failed for ngrid')
-           call LIS_verify(nf90_inquire_dimension(nid,nbinsId, len=nbins_file),&
-                'nf90_inquire_dimension failed for nbins')
-           call LIS_verify(nf90_inquire_dimension(nid,nlevsId, len=nlevs_file),&
-                'nf90_inquire_dimension failed for nlevs')
-           
-           if(nbins.ne.nbins_file) then 
-              write(LIS_logunit,*) '[ERR] The number of bins specified in the file '//&
-                   trim(filename)
-              write(LIS_logunit,*) '[ERR] (',nbins_file, &
-                   ') is different from the number of bins specified'
-              write(LIS_logunit,*) '[ERR] in the lis.config file (',nbins,')'
-              call LIS_endrun()
-           endif
-           
-           allocate(xrange_file(ngrid_file,nlevs_file, nbins))
-           allocate(cdf_file(ngrid_file,nlevs_file, nbins))
-           
-           do j=1,ntimes
-              call LIS_verify(nf90_inq_varid(nid,trim(varname)//'_xrange',xid),&
-                   'nf90_inq_varid failed for for '//trim(varname)//'_xrange')
-              call LIS_verify(nf90_inq_varid(nid,trim(varname)//'_CDF',cdfid),&
-                   'nf90_inq_varid failed for '//trim(varname)//'_CDF')
-              
-              call LIS_verify(nf90_get_var(nid,xid,xrange_file, &
-                   start=(/1,j,1,1/), count=(/ngrid_file,1,nlevs_file,nbins/)),&
-                   'nf90_get_var failed for '//trim(varname)//'_xrange')
-              call LIS_verify(nf90_get_var(nid,cdfid,cdf_file,&
-                   start=(/1,j,1,1/), count=(/ngrid_file,1,nlevs_file,nbins/)),&
-                   'nf90_get_var failed for '//trim(varname)//'_CDF')
-              
-              if(ngrid.gt.0) then 
-                  do kk=1,nbins
-                    call LIS_convertObsVarToLocalSpace(n,k,xrange_file(:,1,kk), &
-                         xrange(:,j,kk))
-                    call LIS_convertObsVarToLocalSpace(n,k,cdf_file(:,1,kk), &
-                         cdf(:,j,kk))
-                 enddo
-              endif
-              
-           enddo
-           
-           deallocate(xrange_file)
-           deallocate(cdf_file)
-        else
-           call LIS_verify(nf90_inq_dimid(nid,"nc",ncId), &
-                'nf90_inq_dimid failed for nc')
-           call LIS_verify(nf90_inq_dimid(nid,"nr",nrId), &
-                'nf90_inq_dimid failed for nr')
-           call LIS_verify(nf90_inq_dimid(nid,"nbins",nbinsId), &
-                'nf90_inq_dimid failed for nbins')
-           nlevs_file = 1
+        call LIS_verify(nf90_inquire_dimension(nid,ngridId, len=ngrid_file),&
+             'nf90_inquire_dimension failed for ngrid')
+        call LIS_verify(nf90_inquire_dimension(nid,nbinsId, len=nbins_file),&
+             'nf90_inquire_dimension failed for nbins')
+        call LIS_verify(nf90_inquire_dimension(nid,nlevsId, len=nlevs_file),&
+             'nf90_inquire_dimension failed for nbins')
         
-           call LIS_verify(nf90_inquire_dimension(nid,ncId, len=nc_file),&
-                'nf90_inquire_dimension failed for nc')
-           call LIS_verify(nf90_inquire_dimension(nid,nrId, len=nr_file),&
-                'nf90_inquire_dimension failed for nr')
-           call LIS_verify(nf90_inquire_dimension(nid,nbinsId, len=nbins_file),&
-                'nf90_inquire_dimension failed for nbins')
-           
-           if(nbins.ne.nbins_file) then 
-              write(LIS_logunit,*) '[ERR] The number of bins specified in the file '//&
-                   trim(filename)
-              write(LIS_logunit,*) '[ERR] (',nbins_file, &
-                   ') is different from the number of bins specified'
-              write(LIS_logunit,*) '[ERR] in the lis.config file (',nbins,')'
-              call LIS_endrun()
-           endif
-           
-           allocate(xrange_file(LIS_rc%lnc(n),LIS_rc%lnr(n),nbins))
-           allocate(cdf_file(LIS_rc%lnc(n),LIS_rc%lnr(n),nbins))
-           
-           do j=1,ntimes
-              call LIS_verify(nf90_inq_varid(nid,trim(varname)//'_xrange',xid),&
-                   'nf90_inq_varid failed for for '//trim(varname)//'_xrange')
-              call LIS_verify(nf90_inq_varid(nid,trim(varname)//'_CDF',cdfid),&
-                   'nf90_inq_varid failed for '//trim(varname)//'_CDF')
-              
-              call LIS_verify(nf90_get_var(nid,xid,xrange_file, &
-                   start=(/LIS_ews_halo_ind(n,LIS_localPet+1),&
-                   LIS_nss_halo_ind(n,LIS_localPet+1),j,1/),&
-                   count=(/LIS_rc%lnc(n),LIS_rc%lnr(n),1,nbins/)),&
-                   'nf90_get_var failed for '//trim(varname)//'_xrange')
-              call LIS_verify(nf90_get_var(nid,cdfid,cdf_file,&
-                   start=(/LIS_ews_halo_ind(n,LIS_localPet+1),&
-                   LIS_nss_halo_ind(n,LIS_localPet+1),j,1/),&
-                   count=(/LIS_rc%lnc(n),LIS_rc%lnr(n),1,nbins/)),&
-                   'nf90_get_var failed for '//trim(varname)//'_CDF')
-
-              if(LIS_rc%obs_ngrid(k).gt.0) then 
-                 do kk=1,ntimes
-                    do r=1,LIS_rc%lnr(n)
-                       do c=1,LIS_rc%lnc(n)
-                          gid = LIS_domain(n)%gindex(c,r)
-                          if(gid.ne.-1) then
-                             xrange(gid,j,kk) = xrange_file(c,r,kk)
-                             cdf(gid,j,kk) = cdf_file(c,r,kk)
-                          endif
-                       enddo
-                    enddo
-                 enddo
-              endif                            
-           enddo
-           
-           deallocate(xrange_file)
-           deallocate(cdf_file)
+        if(nbins.ne.nbins_file) then 
+           write(LIS_logunit,*) '[ERR] The number of bins specified in the file '//&
+                trim(filename)
+           write(LIS_logunit,*) '[ERR] (',nbins_file, &
+                ') is different from the number of bins specified'
+           write(LIS_logunit,*) '[ERR] in the lis.config file (',nbins,')'
+           call LIS_endrun()
         endif
         
+        allocate(xrange_file(ngrid_file,nlevs_file, nbins))
+        allocate(cdf_file(ngrid_file,nlevs_file, nbins))
+
+        do j=1,ntimes
+           call LIS_verify(nf90_inq_varid(nid,trim(varname)//'_xrange',xid),&
+                'nf90_inq_varid failed for for '//trim(varname)//'_xrange')
+           call LIS_verify(nf90_inq_varid(nid,trim(varname)//'_CDF',cdfid),&
+                'nf90_inq_varid failed for '//trim(varname)//'_CDF')
+           
+           call LIS_verify(nf90_get_var(nid,xid,xrange_file, &
+                start=(/1,j,1,1/), count=(/ngrid_file,1,nlevs_file,nbins/)),&
+                'nf90_get_var failed for '//trim(varname)//'_xrange')
+           call LIS_verify(nf90_get_var(nid,cdfid,cdf_file,&
+                start=(/1,j,1,1/), count=(/ngrid_file,1,nlevs_file,nbins/)),&
+                'nf90_get_var failed for '//trim(varname)//'_CDF')
+        
+           if(ngrid.gt.0) then 
+              do kk=1,nbins
+                 call LIS_convertObsVarToLocalSpace(n,k,xrange_file(:,1,kk), &
+                      xrange(:,j,kk))
+                 call LIS_convertObsVarToLocalSpace(n,k,cdf_file(:,1,kk), &
+                      cdf(:,j,kk))
+              enddo
+           endif
+
+        enddo
+
+!        xrange = xrange_file
+!        cdf = cdf_file
+
+        deallocate(xrange_file)
+        deallocate(cdf_file)
+
         call LIS_verify(nf90_close(nid),&
              'failed to close file '//trim(filename))
         write(LIS_logunit,*) '[INFO] Successfully read CDF file ',trim(filename)
@@ -1396,114 +1320,58 @@ contains
 !  \item[sigma]         standard deviation values
 ! \end{description}
 !EOP
-     integer                  :: j,c,r
-     integer                  :: nlevsId, ncId, nrId,gId
+     integer                  :: j
+     integer                  :: nlevsId, gId
      integer                  :: ngrid_file, nlevs_file
-     integer                  :: nc_file,nr_file
      integer                  :: muid, sigmaid
      real, allocatable        :: mu_file(:,:,:)
      real, allocatable        :: sigma_file(:,:,:)
-     character*50             :: cdf_wstyle
      integer                  :: nid
 
      TRACE_ENTER("DA_readSigma")
 #if(defined USE_NETCDF3 || defined USE_NETCDF4)
-     write(LIS_logunit,*) '[INFO] Reading mean and sigma from CDF file ',trim(filename)     
+     write(LIS_logunit,*) '[INFO] Reading mean and sigma from CDF file ',trim(filename)
      call LIS_verify(nf90_open(path=trim(filename),mode=NF90_NOWRITE,&
           ncid=nid),'failed to open file '//trim(filename))
 
-     call LIS_verify(nf90_get_att(nid, NF90_GLOBAL, &
-          'style', &
-          cdf_wstyle),&
-          'Error in nf90_get_att: style')
-     if(cdf_wstyle.eq."1d") then 
-        call LIS_verify(nf90_inq_dimid(nid,trim(varname)//"_levels",nlevsId), &
-             'nf90_inq_dimid failed for '//trim(varname)//"_levels")
-        
-        call LIS_verify(nf90_inquire_dimension(nid,nlevsId, len=nlevs_file),&
-             'nf90_inquire_dimension failed for nbins')
-        
-        call LIS_verify(nf90_inq_dimid(nid, 'ngrid',gId), &
-             'Error nf90_inq_dimid: ngrid')
-        
-        call LIS_verify(nf90_inquire_dimension(nid, gId, len=ngrid_file), &
-             'Error nf90_inquire_dimension:ngrid') 
-        
-        allocate(mu_file(ngrid_file,ntimes, nlevs_file))
-        allocate(sigma_file(ngrid_file,ntimes, nlevs_file))
-        
-        call LIS_verify(nf90_inq_varid(nid,trim(varname)//'_mu',muid),&
-             'nf90_inq_varid failed for for '//trim(varname)//'_mu')
-        call LIS_verify(nf90_inq_varid(nid,trim(varname)//'_sigma',sigmaid),&
-             'nf90_inq_varid failed for '//trim(varname)//'_sigma')
-        
-        call LIS_verify(nf90_get_var(nid,muid,mu_file),&
-             'nf90_get_var failed for '//trim(varname)//'_mu')
-        call LIS_verify(nf90_get_var(nid,sigmaid,sigma_file),&
-             'nf90_get_var failed for '//trim(varname)//'_sigma')
-        
-        if(LIS_rc%obs_ngrid(k).gt.0) then 
-           do j=1,ntimes
-              call LIS_convertObsVarToLocalSpace(n,k,mu_file(:,j,1), mu(:,j))
-              call LIS_convertObsVarToLocalSpace(n,k,sigma_file(:,j,1),sigma(:,j))
-           enddo
-        endif
-        
-        deallocate(mu_file)
-        deallocate(sigma_file)
-     elseif(cdf_wstyle.eq."2d") then
-        nlevs_file =1
+     call LIS_verify(nf90_inq_dimid(nid,trim(varname)//"_levels",nlevsId), &
+          'nf90_inq_dimid failed for '//trim(varname)//"_levels")
 
-        call LIS_verify(nf90_inq_dimid(nid, 'nc',ncId), &
-             'Error nf90_inq_dimid: nc')
-        
-        call LIS_verify(nf90_inquire_dimension(nid, ncId, len=nc_file), &
-             'Error nf90_inquire_dimension:nc') 
-
-        call LIS_verify(nf90_inq_dimid(nid, 'nr',nrId), &
-             'Error nf90_inq_dimid: nr')
-        
-        call LIS_verify(nf90_inquire_dimension(nid, nrId, len=nr_file), &
-             'Error nf90_inquire_dimension:nr') 
-                        
-
-        allocate(mu_file(LIS_rc%lnc(n),LIS_rc%lnr(n),ntimes))
-        allocate(sigma_file(LIS_rc%lnc(n),LIS_rc%lnr(n),ntimes))
-
-        call LIS_verify(nf90_inq_varid(nid,trim(varname)//'_mu',muid),&
-             'nf90_inq_varid failed for for '//trim(varname)//'_mu')
-        call LIS_verify(nf90_inq_varid(nid,trim(varname)//'_sigma',sigmaid),&
-             'nf90_inq_varid failed for '//trim(varname)//'_sigma')
-        
-        call LIS_verify(nf90_get_var(nid,muid,mu_file,&
-             start=(/LIS_ews_halo_ind(n,LIS_localPet+1),&
-             LIS_nss_halo_ind(n,LIS_localPet+1),1/),&
-             count=(/LIS_rc%lnc(n),LIS_rc%lnr(n),ntimes/)),&
-             'nf90_get_var failed for '//trim(varname)//'_mu')
-        call LIS_verify(nf90_get_var(nid,sigmaid,sigma_file,&
-             start=(/LIS_ews_halo_ind(n,LIS_localPet+1),&
-             LIS_nss_halo_ind(n,LIS_localPet+1),1/),&
-             count=(/LIS_rc%lnc(n),LIS_rc%lnr(n),ntimes/)),&
-             'nf90_get_var failed for '//trim(varname)//'_sigma')
-
-        if(LIS_rc%obs_ngrid(k).gt.0) then 
-           do j=1,ntimes
-              do r=1,LIS_rc%lnr(n)
-                 do c=1,LIS_rc%lnc(n)
-                    gid = LIS_domain(n)%gindex(c,r)
-                    if(gid.ne.-1) then
-                       mu(gid,j) = mu_file(c,r,j)
-                       sigma(gid,j) = sigma_file(c,r,j)
-                    endif
-                 enddo
-              enddo
-           enddo
-        endif
-                
-        deallocate(mu_file)
-        deallocate(sigma_file)        
-     endif
+     call LIS_verify(nf90_inquire_dimension(nid,nlevsId, len=nlevs_file),&
+          'nf90_inquire_dimension failed for nbins')
+   
+     call LIS_verify(nf90_inq_dimid(nid, 'ngrid',gId), &
+          'Error nf90_inq_dimid: ngrid')
      
+     call LIS_verify(nf90_inquire_dimension(nid, gId, len=ngrid_file), &
+          'Error nf90_inquire_dimension:ngrid') 
+
+     allocate(mu_file(ngrid_file,ntimes, nlevs_file))
+     allocate(sigma_file(ngrid_file,ntimes, nlevs_file))
+
+     call LIS_verify(nf90_inq_varid(nid,trim(varname)//'_mu',muid),&
+          'nf90_inq_varid failed for for '//trim(varname)//'_mu')
+     call LIS_verify(nf90_inq_varid(nid,trim(varname)//'_sigma',sigmaid),&
+          'nf90_inq_varid failed for '//trim(varname)//'_sigma')
+     
+     call LIS_verify(nf90_get_var(nid,muid,mu_file),&
+          'nf90_get_var failed for '//trim(varname)//'_mu')
+     call LIS_verify(nf90_get_var(nid,sigmaid,sigma_file),&
+          'nf90_get_var failed for '//trim(varname)//'_sigma')
+
+     if(LIS_rc%obs_ngrid(k).gt.0) then 
+        do j=1,ntimes
+           call LIS_convertObsVarToLocalSpace(n,k,mu_file(:,j,1), mu(:,j))
+           call LIS_convertObsVarToLocalSpace(n,k,sigma_file(:,j,1),sigma(:,j))
+        enddo
+     endif
+
+!     mu(:,:)    = mu_file(:,:,1)
+!     sigma(:,:) = sigma_file(:,:,1)
+
+     deallocate(mu_file)
+     deallocate(sigma_file)
+
      call LIS_verify(nf90_close(nid),&
           'failed to close file '//trim(filename))
      write(LIS_logunit,*) '[INFO] Successfully read mean and sigma from CDF file ',trim(filename)

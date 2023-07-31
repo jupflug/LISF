@@ -229,7 +229,7 @@ subroutine NoahMP401_coldstart(mtype)
 !------------------------------------
 ! Initialize Model State Variables
 !----------------------------------------------------------------------
-!        if (trim(LIS_rc%startcode) .eq. "coldstart") then
+        if (trim(LIS_rc%startcode) .eq. "coldstart") then
             write(LIS_logunit,*) &
              "[INFO] NoahMP401_coldstart -- cold-starting Noah-MP.4.0.1"
 
@@ -445,16 +445,13 @@ subroutine NoahMP401_coldstart(mtype)
 
                NOAHMP401_struc(n)%noahmp401(t)%snowice(1:NOAHMP401_struc(n)%nsnow) = snicexy(1,-NOAHMP401_struc(n)%nsnow+1:0,1)
                NOAHMP401_struc(n)%noahmp401(t)%snowliq(1:NOAHMP401_struc(n)%nsnow) = snliqxy(1,-NOAHMP401_struc(n)%nsnow+1:0,1)
-               NOAHMP401_struc(n)%noahmp401(t)%zss(1:NOAHMP401_struc(n)%nsnow+NOAHMP401_struc(n)%nsoil) = zsnsoxy(1,-NOAHMP401_struc(n)%nsnow+1:NOAHMP401_struc(n)%nsoil,1)
-!               if(LIS_localPet.eq.113.and.t.eq.1) then
-!                  print*, 'col',NOAHMP401_struc(n)%noahmp401(t)%zss
-!               endif
+               NOAHMP401_struc(n)%noahmp401(t)%zss(1:NOAHMP401_struc(n)%nsnow+NOAHMP401_struc(n)%nsoil) = zsnsoxy(1,-NOAHMP401_struc(n)%nsnow+1:NOAHMP401_struc(n)%nsoil,1) 
                NOAHMP401_struc(n)%noahmp401(t)%isnow = isnowxy(1,1) 
                NOAHMP401_struc(n)%noahmp401(t)%tsno(1:NOAHMP401_struc(n)%nsnow) = tsnoxy(1,-NOAHMP401_struc(n)%nsnow+1:0,1)
 !-----------------------------------------------------------------------
             enddo   ! t=1,1
 
-!        endif       ! coldstart
+        endif       ! coldstart
 
         deallocate(zsnso)
         deallocate(tsnow)
