@@ -352,27 +352,31 @@ subroutine NOAHMP401_read_MULTILEVEL_param(n, ncvar_name, level, placeholder)
         call LIS_verify(ios, trim(ncvar_name)//' failed to inquire the length of the 3rd dimension')
 
         ! allocate memory
-        allocate(level_data (LIS_rc%gnc(n), LIS_rc%gnr(n), nlevel))
+!        allocate(level_data (LIS_rc%gnc(n), LIS_rc%gnr(n), nlevel))
 
         ! inquire the variable ID of parameter 
         ios = nf90_inq_varid(nid, trim(ncvar_name), param_ID)
         call LIS_verify(ios, trim(ncvar_name)//' field not found in the LIS param file')
 
         ! read parameter 
-        ios = nf90_get_var(nid, param_ID, level_data)
+!        ios = nf90_get_var(nid, param_ID, level_data)
+        ios = nf90_get_var(nid, param_ID, placeholder,&
+              start=(/LIS_ews_halo_ind(n,LIS_localPet+1),&
+              LIS_nss_halo_ind(n,LIS_localPet+1),nlevel/),&
+              count=(/LIS_rc%lnc(n),LIS_rc%lnr(n),1/))
         call LIS_verify(ios, 'Error in nf90_get_var in NOAHMP401_read_MULTILEVEL_param')
 
         ! close netcdf file 
         ios = nf90_close(nid)
         call LIS_verify(ios, 'Error in nf90_close in NOAHMP401_read_MULTILEVEL_param')
 
-        ! grab parameter at specific level
-        placeholder(:, :) = & 
-             level_data(LIS_ews_halo_ind(n, LIS_localPet+1):LIS_ewe_halo_ind(n, LIS_localPet+1), &
-             LIS_nss_halo_ind(n, LIS_localPet+1):LIS_nse_halo_ind(n, LIS_localPet+1), level)
+!        ! grab parameter at specific level
+!        placeholder(:, :) = & 
+!             level_data(LIS_ews_halo_ind(n, LIS_localPet+1):LIS_ewe_halo_ind(n, LIS_localPet+1), &
+!             LIS_nss_halo_ind(n, LIS_localPet+1):LIS_nse_halo_ind(n, LIS_localPet+1), level)
         
         ! free memory 
-        deallocate(level_data)
+!        deallocate(level_data)
 
     else
         write(LIS_logunit, *) '[ERR] MULTILEVEL parameter data file: ', &
